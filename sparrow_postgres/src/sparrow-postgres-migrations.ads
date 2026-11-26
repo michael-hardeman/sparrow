@@ -23,9 +23,14 @@ package Sparrow.Postgres.Migrations with SPARK_Mode => Off is
    --  Bring This up to the last step. Raises Program_Error when versions do not increase, Migration_Error
    --  naming the step when one fails (nothing of the run is then kept), and Connection_Error when the
    --  connection does.
-   procedure Apply (This : in out Connection; Steps : Step_List);
+   procedure Apply (This : in out Connection; Steps : Step_List)
+     with Global            => (In_Out => Sparrow.Postgres.Server),
+          Exceptional_Cases => (Program_Error => True, Migration_Error => True, Connection_Error => True),
+          Post              => Is_Connected (This);
 
    --  The last version applied; 0 for a database never migrated.
-   function Version (This : in out Connection) return Natural;
+   function Version (This : in out Connection) return Natural
+     with Global => (In_Out => Sparrow.Postgres.Server),
+          Post   => Is_Connected (This);
 
 end Sparrow.Postgres.Migrations;

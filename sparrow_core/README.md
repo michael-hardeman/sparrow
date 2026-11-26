@@ -76,7 +76,7 @@ decoder. sparrow_http uses it for `Content-Encoding: gzip`.
 ## Proof
 
 ```sh
-alr exec -- gnatprove -P sparrow_core.gpr -j0 --mode=silver --level=2
+alr exec -- gnatprove -P sparrow_core.gpr -j0 --mode=silver --level=4 --prover=cvc5,z3 --steps=200000 --timeout=300
 ```
 
 Everything here is proved free of run-time errors, the compressor included. Its output is also checked

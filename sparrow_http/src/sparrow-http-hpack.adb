@@ -222,11 +222,18 @@ package body Sparrow.Http.Hpack with SPARK_Mode is
             end if;
             Byte     := Character'Pos (Block (Position));
             Position := Position + 1;
-            if Byte mod 128 * Scale (Step) > Largest_Integer - Value then
-               Valid := False;
-               return;
-            end if;
-            Value := Value + Byte mod 128 * Scale (Step);
+            --  Name the factors and bound them: a product of bounded constants is linear for the provers.
+            declare
+               Fragment : constant Natural := Byte mod 128;
+               Factor   : constant Natural := Scale (Step);
+            begin
+               pragma Assert (Fragment <= 127 and then Factor <= 2 ** 21);
+               if Fragment * Factor > Largest_Integer - Value then
+                  Valid := False;
+                  return;
+               end if;
+               Value := Value + Fragment * Factor;
+            end;
             exit when Byte < 128;
             if Step = 3 then
                Valid := False;

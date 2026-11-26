@@ -30,8 +30,18 @@ package body Sparrow.Postgres_Wire with SPARK_Mode is
    -----------------
 
    function Signed_Word (Data : String; Position : Positive) return Long_Long_Integer is
-     (Long_Long_Integer (Word (Data, Position)) - (if Word (Data, Position) >= 2 ** 31 then 2 ** 32 else 0))
-      with Pre => Framed (Data) and then Position <= Data'Last - 3;
+     (Long_Long_Integer (Word (Data, Position)) - (if Word (Data, Position) >= 2 ** 31 then 2 ** 32 else 0));
+
+   -------------------------
+   -- Signed_Double_Word --
+   -------------------------
+
+   function Signed_Double_Word (Data : String; Position : Positive) return Long_Long_Integer is
+      Bits : constant Unsigned_64 := Shift_Left (Unsigned_64 (Word (Data, Position)), 32)
+                                     or Unsigned_64 (Word (Data, Position + 4));
+   begin
+      return (if Bits >= 2 ** 63 then -Long_Long_Integer (not Bits) - 1 else Long_Long_Integer (Bits));
+   end Signed_Double_Word;
 
    -----------------
    -- Next_Column --
@@ -101,7 +111,6 @@ package body Sparrow.Postgres_Wire with SPARK_Mode is
    -------------------
 
    function Integer_Value (Data : String; Item : Field) return Long_Long_Integer is
-      Bits : Unsigned_64;
    begin
       if not Inside (Data, Item) then
          return 0;
@@ -117,9 +126,7 @@ package body Sparrow.Postgres_Wire with SPARK_Mode is
          when 4 =>
             return Signed_Word (Data, Item.Position);
          when 8 =>
-            Bits := Shift_Left (Unsigned_64 (Word (Data, Item.Position)), 32)
-                    or Unsigned_64 (Word (Data, Item.Position + 4));
-            return (if Bits >= 2 ** 63 then -Long_Long_Integer (not Bits) - 1 else Long_Long_Integer (Bits));
+            return Signed_Double_Word (Data, Item.Position);
          when others =>
             return 0;
       end case;
@@ -136,11 +143,34 @@ package body Sparrow.Postgres_Wire with SPARK_Mode is
    -- Float_Value --
    -----------------
 
-   --  Outside SPARK: reinterpreting bits as a float. The result is checked with 'Valid before it is used, so
-   --  NaN and infinities read as 0.0.
-   function Float_Value (Data : String; Item : Field) return Long_Float with SPARK_Mode => Off is
+   ------------------
+   -- Float_4_Value --
+   ------------------
+
+   --  Unchecked_Conversion is not in SPARK; the spec's Post is what callers rely on.
+   function Float_4_Value (Bits : Unsigned_32) return Long_Float with SPARK_Mode => Off is
       function To_Float is new Ada.Unchecked_Conversion (Unsigned_32, Float);
+      Value : constant Float := To_Float (Bits);
+   begin
+      return (if Value'Valid then Long_Float (Value) else 0.0);
+   end Float_4_Value;
+
+   ------------------
+   -- Float_8_Value --
+   ------------------
+
+   function Float_8_Value (Bits : Unsigned_64) return Long_Float with SPARK_Mode => Off is
       function To_Long_Float is new Ada.Unchecked_Conversion (Unsigned_64, Long_Float);
+      Value : constant Long_Float := To_Long_Float (Bits);
+   begin
+      return (if Value'Valid then Value else 0.0);
+   end Float_8_Value;
+
+   -----------------
+   -- Float_Value --
+   -----------------
+
+   function Float_Value (Data : String; Item : Field) return Long_Float is
    begin
       if not Inside (Data, Item) then
          return 0.0;
@@ -148,25 +178,14 @@ package body Sparrow.Postgres_Wire with SPARK_Mode is
 
       case Item.Length is
          when 4 =>
-            declare
-               Value : constant Float := To_Float (Word (Data, Item.Position));
-            begin
-               return (if Value'Valid then Long_Float (Value) else 0.0);
-            end;
+            return Float_4_Value (Word (Data, Item.Position));
          when 8 =>
-            declare
-               Value : constant Long_Float := To_Long_Float
-                 (Shift_Left (Unsigned_64 (Word (Data, Item.Position)), 32)
-                  or Unsigned_64 (Word (Data, Item.Position + 4)));
-            begin
-               return (if Value'Valid then Value else 0.0);
-            end;
+            return Float_8_Value (Shift_Left (Unsigned_64 (Word (Data, Item.Position)), 32)
+                                  or Unsigned_64 (Word (Data, Item.Position + 4)));
          when others =>
             return 0.0;
       end case;
    end Float_Value;
-
-   Array_Header : constant := 20;   --  dimensions, flags, element type, length, lower bound
 
    -------------------
    -- Element_Count --

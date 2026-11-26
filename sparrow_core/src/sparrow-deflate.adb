@@ -626,15 +626,15 @@ package body Sparrow.Deflate with SPARK_Mode is
    end Hash_At;
 
    --  The offset of Position from Input's start, counting from 1.
-   function Offset_Of (Input : String; Position : Positive) return Unsigned_32 is
-     (Unsigned_32 (Position - Input'First + 1))
+   function Offset_Of (Input : String; Position : Positive) return Chain_Offset is
+     (Chain_Offset (Position - Input'First + 1))
       with Pre => Position in Input'Range;
 
    procedure Insert (Work : in out State; Input : String; Position : Positive; Hash : Hash_Index)
       with Pre => Position in Input'Range, Inline
    is
-      Offset : constant Unsigned_32 := Offset_Of (Input, Position);
-      Latest : constant Unsigned_32 := Work.Head (Hash);
+      Offset : constant Chain_Offset := Offset_Of (Input, Position);
+      Latest : constant Chain_Offset := Work.Head (Hash);
    begin
       Work.Chain (Window_Index ((Offset - 1) mod Window_Size)) :=
         (if Latest /= 0 and then Latest < Offset and then Offset - Latest <= Window_Size - 1
@@ -656,8 +656,8 @@ package body Sparrow.Deflate with SPARK_Mode is
                                         and then Distance in 1 .. Window_Size - 1))
    is
       Room      : constant Natural := Natural'Min (Max_Match, Input'Last - Position + 1);
-      Offset    : constant Unsigned_32 := Offset_Of (Input, Position);
-      Candidate : Unsigned_32 := Work.Head (Hash);
+      Offset    : constant Chain_Offset := Offset_Of (Input, Position);
+      Candidate : Chain_Offset := Work.Head (Hash);
       Best      : Natural := Min_Match - 1;
    begin
       Length   := 0;
@@ -669,6 +669,9 @@ package body Sparrow.Deflate with SPARK_Mode is
                                                               and then Distance in 1 .. Window_Size - 1)));
          exit when Candidate = 0 or else Candidate >= Offset or else Offset - Candidate >= Window_Size
            or else Best >= Room;
+         --  The exit bounds the chain offset; state it where the provers can use it for the index checks.
+         pragma Assert (Candidate >= 1 and then Candidate < Offset and then Best < Room);
+         pragma Assert (Best <= Input'Last - Position);
          declare
             Start : constant Positive := Input'First + Natural (Candidate) - 1;
             Run   : Natural := 0;
@@ -690,8 +693,8 @@ package body Sparrow.Deflate with SPARK_Mode is
          declare
             Step : constant Unsigned_16 := Work.Chain (Window_Index ((Candidate - 1) mod Window_Size));
          begin
-            exit when Step = 0 or else Unsigned_32 (Step) >= Candidate;
-            Candidate := Candidate - Unsigned_32 (Step);
+            exit when Step = 0 or else Chain_Offset (Step) >= Candidate;
+            Candidate := Candidate - Chain_Offset (Step);
          end;
       end loop;
    end Find;

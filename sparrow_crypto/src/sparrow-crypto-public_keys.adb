@@ -2,7 +2,7 @@ with Interfaces.C; use Interfaces.C;
 with Sparrow.Crypto.Libcrypto; use Sparrow.Crypto.Libcrypto;
 with System; use System;
 
-package body Sparrow.Crypto.Public_Keys is
+package body Sparrow.Crypto.Public_Keys with SPARK_Mode => Off is
 
    EVP_PKEY_RSA     : constant := 6;
    EVP_PKEY_EC      : constant := 408;
@@ -191,7 +191,8 @@ package body Sparrow.Crypto.Public_Keys is
       N      : aliased String := Native_Order (Modulus);
       E      : aliased String := Native_Order (Exponent);
    begin
-      if Modulus'Length = 0 or else Exponent'Length = 0 or else Modulus'Length > 2048 or else Exponent'Length > 8
+      if Modulus'Length not in 1 .. Max_Modulus_Bytes
+        or else Exponent'Length not in 1 .. Max_Exponent_Bytes
       then
          return No_Public_Key;
       end if;
@@ -210,7 +211,7 @@ package body Sparrow.Crypto.Public_Keys is
       Group      : aliased constant char_array := To_C ("P-256");
       Point      : aliased constant String := Character'Val (4) & X & Y;   --  uncompressed
    begin
-      if X'Length /= 32 or else Y'Length /= 32 then
+      if X'Length /= Coordinate_Bytes or else Y'Length /= Coordinate_Bytes then
          return No_Public_Key;
       end if;
       return Public_From
@@ -224,10 +225,11 @@ package body Sparrow.Crypto.Public_Keys is
 
    function Ed25519_Key (X : String) return Public_Key is
    begin
-      if X'Length /= 32 then
+      if X'Length /= Coordinate_Bytes then
          return No_Public_Key;
       end if;
-      return Public_From (EVP_PKEY_new_raw_public_key (EVP_PKEY_ED25519, Null_Address, Start_Of (X), 32));
+      return Public_From
+        (EVP_PKEY_new_raw_public_key (EVP_PKEY_ED25519, Null_Address, Start_Of (X), Coordinate_Bytes));
    end Ed25519_Key;
 
    type Pem_Reader is access function (Bio : Address; Into, Callback, User : Address) return Address
@@ -239,7 +241,7 @@ package body Sparrow.Crypto.Public_Keys is
       Bio    : Address;
       Result : Address := Null_Address;
    begin
-      if Text'Length = 0 or else Text'Length > 1_000_000 then
+      if Text'Length = 0 or else Text'Length > Max_Pem_Length then
          return Null_Address;
       end if;
       Bio := BIO_new_mem_buf (Start_Of (Text), int (Text'Length));
@@ -260,10 +262,11 @@ package body Sparrow.Crypto.Public_Keys is
 
    function Ed25519_Private (Seed : String) return Private_Key is
    begin
-      if Seed'Length /= 32 then
+      if Seed'Length /= Coordinate_Bytes then
          return (Reference => No_Reference);
       end if;
-      return Private_From (EVP_PKEY_new_raw_private_key (EVP_PKEY_ED25519, Null_Address, Start_Of (Seed), 32));
+      return Private_From
+        (EVP_PKEY_new_raw_private_key (EVP_PKEY_ED25519, Null_Address, Start_Of (Seed), Coordinate_Bytes));
    end Ed25519_Private;
 
    function Public_Of (Key : Private_Key) return Public_Key is
@@ -331,7 +334,7 @@ package body Sparrow.Crypto.Public_Keys is
       Status  : int := 0;
    begin
       if Key.Reference.Kind = None or else Signed'Length = 0
-        or else (Key.Reference.Kind in Ec_P256 | Ed25519 and then Signed'Length /= 64)
+        or else (Key.Reference.Kind in Ec_P256 | Ed25519 and then Signed'Length /= Signature_Bytes)
       then
          return False;
       end if;
@@ -356,7 +359,7 @@ package body Sparrow.Crypto.Public_Keys is
 
    function Sign (Key : Private_Key; Message : String) return String is
       Context : constant Address := EVP_MD_CTX_new;
-      Result  : aliased String (1 .. 1024);   --  8192-bit RSA at most
+      Result  : aliased String (1 .. Max_Rsa_Signature_Bytes);   --  8192-bit RSA at most
       Length  : aliased size_t := Result'Length;
       Status  : int := 0;
    begin

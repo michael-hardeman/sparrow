@@ -3,7 +3,7 @@ with Sparrow.Base64; use Sparrow.Base64;
 with Sparrow.Buffers;
 with Sparrow.Json.Writers;
 
-package body Sparrow.Jwt.Key_Sets is
+package body Sparrow.Jwt.Key_Sets with SPARK_Mode => Off is
 
    use Sparrow.Json;
    package Signing renames Sparrow.Crypto.Public_Keys;
@@ -49,7 +49,7 @@ package body Sparrow.Jwt.Key_Sets is
       Doc    : Document_Access;
       Parsed : Boolean;
    begin
-      if Text'Length = 0 or else Text'Length > 1_048_576 then
+      if Text'Length = 0 or else Text'Length > Max_Jwks_Length then
          return Empty_Set;
       end if;
       Doc := new Document (Node_Capacity => Node_Index (Natural'Min (Text'Length, 100_000)),
@@ -107,6 +107,8 @@ package body Sparrow.Jwt.Key_Sets is
 
    function Count (Set : Key_Set) return Natural is (Natural (Set.Entries.Length));
 
+   function Key_At (Set : Key_Set; Index : Positive) return Public_Key is (Set.Entries (Index).Key);
+
    function Has_Key (Set : Key_Set; Key_Id : String) return Boolean is
      (for some Item of Set.Entries => Item.Key_Id = Key_Id);
 
@@ -149,9 +151,9 @@ package body Sparrow.Jwt.Key_Sets is
          return;
       end if;
       Decode_Url (Token (Token'First .. First_Dot - 1), Header, Valid);
-      if Valid and then Header.Length in 1 .. 2048 then
+      if Valid and then Header.Length in 1 .. Max_Header_Length then
          declare
-            Doc    : Document (Node_Capacity => 64, Text_Capacity => 2048);
+            Doc    : Document (Node_Capacity => 64, Text_Capacity => Max_Header_Length);
             Source : constant String (1 .. Header.Length) := Buffers.Content (Header);
          begin
             Parse (Doc, Source, Valid);

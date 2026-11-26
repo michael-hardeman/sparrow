@@ -32,8 +32,23 @@ package Sparrow.Http.Compression with SPARK_Mode is
    --  Whether a Content-Type is one that compresses well.
    function Compressible (Media_Type : String) return Boolean;
 
-   --  Compress Response for Request if all of the above hold; otherwise leave it as it is.
+   --  The response-only part of the decision: a whole 2xx body of a shrinkable type, long enough, with no
+   --  Content-Encoding and no no-transform. Vary: Accept-Encoding must be set before the client is checked.
+   function Compressible_Response (Response : Responses.Response) return Boolean
+      with Pre => Responses.Valid (Response);
+
+   --  Whether the client takes gzip for a compressible response. The compressor's verdict that the result is
+   --  smaller is the only part this cannot decide.
+   function Eligible (Request : Requests.Request; Response : Responses.Response) return Boolean
+      with Pre => Responses.Valid (Response);
+
+   --  Compress Response for Request if eligible and the compressed bytes are smaller; otherwise leave the body
+   --  as it is. Vary: Accept-Encoding may be added either way. The heap compressor pool keeps the body Off;
+   --  the full before/after relation cannot be a Post here because 'Old on a by-copy in out parameter is not
+   --  allowed in SPARK, so only validity is stated.
    procedure Apply (Request : Requests.Request; Response : in out Responses.Response)
-      with SPARK_Mode => Off;
+      with Global => null,
+           Pre    => Responses.Valid (Response),
+           Post   => Responses.Valid (Response);
 
 end Sparrow.Http.Compression;

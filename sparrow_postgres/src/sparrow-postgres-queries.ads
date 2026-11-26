@@ -36,9 +36,17 @@ package Sparrow.Postgres.Queries with SPARK_Mode => Off is
    --  (Result.State and Last_Failure say why not). The rows stay readable until the next query on This.
    --  Raises Connection_Error when the connection fails, or when Parameters do not fit the statement.
    procedure Query
-     (This : in out Connection; Prepared : Statement; Parameters : Parameter_List; Result : out Statement_Result);
+     (This : in out Connection; Prepared : Statement; Parameters : Parameter_List; Result : out Statement_Result)
+     with Global            => (In_Out => Sparrow.Postgres.Server),
+          Exceptional_Cases => (Connection_Error => True),
+          Post              => (if not Result.Succeeded then Result.Row_Count = 0
+                                and then Result.Affected_Rows = 0);
 
-   procedure Query (This : in out Connection; Prepared : Statement; Result : out Statement_Result);
+   procedure Query (This : in out Connection; Prepared : Statement; Result : out Statement_Result)
+     with Global            => (In_Out => Sparrow.Postgres.Server),
+          Exceptional_Cases => (Connection_Error => True),
+          Post              => (if not Result.Succeeded then Result.Row_Count = 0
+                                and then Result.Affected_Rows = 0);
 
    ---------------------------------------------------------------------------------------------------------------
    --  Rows
@@ -53,21 +61,35 @@ package Sparrow.Postgres.Queries with SPARK_Mode => Off is
    function Field (This : Row; Column : String) return Postgres.Field;
    function Field (This : Row; Column : Positive) return Postgres.Field;
 
-   function Is_Null (This : Row; Column : String) return Boolean;
-   function Text (This : Row; Column : String) return UTF8_String;
-   function Bytes (This : Row; Column : String) return String;
-   function Integer_Value (This : Row; Column : String) return Long_Long_Integer;
-   function Boolean_Value (This : Row; Column : String) return Boolean;
-   function Float_Value (This : Row; Column : String) return Long_Float;
-   function Timestamp_Value (This : Row; Column : String) return Unix_Microseconds;
+   function Is_Null (This : Row; Column : String) return Boolean
+     with Post => Is_Null'Result = Sparrow.Postgres.Is_Null (Field (This, Column));
+   function Text (This : Row; Column : String) return UTF8_String
+     with Post => (if Is_Null (This, Column) then Text'Result = "");
+   function Bytes (This : Row; Column : String) return String
+     with Post => (if Is_Null (This, Column) then Bytes'Result = "");
+   function Integer_Value (This : Row; Column : String) return Long_Long_Integer
+     with Post => (if Is_Null (This, Column) then Integer_Value'Result = 0);
+   function Boolean_Value (This : Row; Column : String) return Boolean
+     with Post => (if Is_Null (This, Column) then not Boolean_Value'Result);
+   function Float_Value (This : Row; Column : String) return Long_Float
+     with Post => (if Is_Null (This, Column) then Float_Value'Result = 0.0);
+   function Timestamp_Value (This : Row; Column : String) return Unix_Microseconds
+     with Post => (if Is_Null (This, Column) then Timestamp_Value'Result = 0);
 
-   function Is_Null (This : Row; Column : Positive) return Boolean;
-   function Text (This : Row; Column : Positive) return UTF8_String;
-   function Bytes (This : Row; Column : Positive) return String;
-   function Integer_Value (This : Row; Column : Positive) return Long_Long_Integer;
-   function Boolean_Value (This : Row; Column : Positive) return Boolean;
-   function Float_Value (This : Row; Column : Positive) return Long_Float;
-   function Timestamp_Value (This : Row; Column : Positive) return Unix_Microseconds;
+   function Is_Null (This : Row; Column : Positive) return Boolean
+     with Post => Is_Null'Result = Sparrow.Postgres.Is_Null (Field (This, Column));
+   function Text (This : Row; Column : Positive) return UTF8_String
+     with Post => (if Is_Null (This, Column) then Text'Result = "");
+   function Bytes (This : Row; Column : Positive) return String
+     with Post => (if Is_Null (This, Column) then Bytes'Result = "");
+   function Integer_Value (This : Row; Column : Positive) return Long_Long_Integer
+     with Post => (if Is_Null (This, Column) then Integer_Value'Result = 0);
+   function Boolean_Value (This : Row; Column : Positive) return Boolean
+     with Post => (if Is_Null (This, Column) then not Boolean_Value'Result);
+   function Float_Value (This : Row; Column : Positive) return Long_Float
+     with Post => (if Is_Null (This, Column) then Float_Value'Result = 0.0);
+   function Timestamp_Value (This : Row; Column : Positive) return Unix_Microseconds
+     with Post => (if Is_Null (This, Column) then Timestamp_Value'Result = 0);
 
    function Has_Element (Position : Row) return Boolean;
    package Row_Iterators is new Ada.Iterator_Interfaces (Row, Has_Element);
@@ -89,14 +111,25 @@ package Sparrow.Postgres.Queries with SPARK_Mode => Off is
 
    type Result_Reader (<>) is limited private;
 
-   --  Before the first row of Result. This must outlive the reader.
-   function Reader (This : Connection; Result : Statement_Result) return Result_Reader;
-
-   function Next_Row (From : in out Result_Reader) return Boolean;
    function Column_Count (From : Result_Reader) return Natural;
+   --  Whether From is on a row (false before the first and past the last).
+   function On_Row (From : Result_Reader) return Boolean;
+
+   --  Before the first row of Result. This must outlive the reader.
+   function Reader (This : Connection; Result : Statement_Result) return Result_Reader
+     with Post => not On_Row (Reader'Result) and then Column_Count (Reader'Result) = Result.Column_Count;
+
+   function Next_Row (From : in out Result_Reader) return Boolean
+     with Post => (if Next_Row'Result then On_Row (From));
+
+   function Is_Null (From : Result_Reader; Column : Positive) return Boolean
+     with Post => (if not On_Row (From) then Is_Null'Result);
+
+   --  Any type, as text.
+   function Text (From : Result_Reader; Column : Positive) return UTF8_String
+     with Post => (if not On_Row (From) then Text'Result = "");
+
    function Column_Name (From : Result_Reader; Column : Positive) return String;
-   function Is_Null (From : Result_Reader; Column : Positive) return Boolean;
-   function Text (From : Result_Reader; Column : Positive) return UTF8_String;   --  any type, as text
 
 private
 

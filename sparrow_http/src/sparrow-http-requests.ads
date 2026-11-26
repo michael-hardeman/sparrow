@@ -43,8 +43,10 @@ package Sparrow.Http.Requests with SPARK_Mode is
    --        Responses.Send (Response, Bad_Request, "the body is not JSON");
    --        return;
    --     end if;
+   --  The document is sized to the body, so its discriminants cannot be fixed by SPARK (E0007); only that
+   --  allocation is Off. The capacity scan is proved in a SPARK helper.
    function Json_Body (This : Request; Options : Json.Parse_Options := Json.Default_Options) return Json.Document
-      with SPARK_Mode => Off;
+      with Post => (if Json.Is_Valid (Json_Body'Result) then Content (This)'Length > 0);
 
    --  What a route pattern's ":name" (or "*name") matched, percent-decoded.
    function Parameter (This : Request; Name : String) return String;

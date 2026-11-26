@@ -276,33 +276,44 @@ package body Sparrow.Http.Requests with SPARK_Mode is
    ---------------------------------------------------------------------------------------------------------------
    --  JSON bodies
 
-   function Json_Body (This : Request; Options : Json.Parse_Options := Json.Default_Options) return Json.Document
-     with SPARK_Mode => Off
+   --  Every value but the top one sits in an array or object, which has one comma fewer than children: so
+   --  1 + commas + brackets bounds the nodes (commas inside strings only add slack). Clamped to the largest
+   --  document capacity; the decoded text is never longer than the source.
+   function Node_Capacity_For (Source : String) return Json.Node_Count
+     with Pre  => Source'First >= 1 and then Source'Last < Positive'Last,
+          Post => Node_Capacity_For'Result in 1 .. Json.Node_Count'Last
    is
-      use type Json.Node_Count;
-      Source : constant String := Content (This);
-
-      --  Every value but the top one sits in an array or object, which has one comma fewer than children: so
-      --  1 + commas + brackets bounds the nodes (commas inside strings only add slack). The decoded text is
-      --  never longer than the source.
       Nodes : Long_Long_Integer := 1;
    begin
-      for Symbol of Source loop
-         if Symbol in ',' | '[' | '{' then
+      for Index in Source'Range loop
+         pragma Loop_Invariant (Nodes >= 1 and then Nodes <= Long_Long_Integer (Index - Source'First) + 1);
+         if Source (Index) in ',' | '[' | '{' then
             Nodes := Nodes + 1;
          end if;
       end loop;
+      return Json.Node_Count (Long_Long_Integer'Min (Nodes, Long_Long_Integer (Json.Node_Count'Last)));
+   end Node_Capacity_For;
+
+   function Json_Body (This : Request; Options : Json.Parse_Options := Json.Default_Options) return Json.Document
+     with SPARK_Mode => Off
+   is
+      Source : constant String := Content (This);
+   begin
+      if Source'Length = 0 or else Source'Last = Positive'Last then
+         return Result : Json.Document (Node_Capacity => 1, Text_Capacity => 1) do
+            null;
+         end return;
+      end if;
+
       return Result : Json.Document
-        (Node_Capacity => Json.Node_Count (Long_Long_Integer'Min (Nodes, Long_Long_Integer (Json.Node_Count'Last))),
+        (Node_Capacity => Node_Capacity_For (Source),
          Text_Capacity => Positive'Max (1, Source'Length))
       do
-         if Source'Length > 0 and then Source'Last < Positive'Last then
-            declare
-               Valid : Boolean;
-            begin
-               Json.Parse (Result, Source, Valid, Options);
-            end;
-         end if;
+         declare
+            Valid : Boolean;
+         begin
+            Json.Parse (Result, Source, Valid, Options);
+         end;
       end return;
    end Json_Body;
 

@@ -34,9 +34,12 @@ private
    type Hash_Index is mod 2 ** Hash_Bits;
    type Window_Index is mod Window_Size;
 
+   --  Provers model Interfaces modular types as bit vectors, which hides their relation to string indexes.
+   type Chain_Offset is new Unsigned_32 with Annotate => (GNATprove, No_Bitwise_Operations);
+
    --  Head: for each hash of three bytes, the offset (from 1) of the latest position with it, or 0.
    --  Chain: for each position's offset modulo the window, how far back the previous one with its hash is, or 0.
-   type Head_Table is array (Hash_Index) of Unsigned_32;
+   type Head_Table is array (Hash_Index) of Chain_Offset;
    type Chain_Table is array (Window_Index) of Unsigned_16;
 
    subtype Symbol_Index is Positive range 1 .. Block_Symbols;

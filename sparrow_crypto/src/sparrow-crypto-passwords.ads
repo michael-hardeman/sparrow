@@ -49,6 +49,7 @@ package Sparrow.Crypto.Passwords with SPARK_Mode is
 
    Max_Password_Length : constant := 4096;
    Max_Hash_Length     : constant := 128;
+   Max_Stored_Length   : constant := 512;
    subtype Salt_Bytes is String (1 .. 16);
 
    --  A fresh stored hash of Password, with Kind's cost. Draw Salt with Sparrow.Crypto.Random.Fill. Kind is
@@ -66,13 +67,37 @@ package Sparrow.Crypto.Passwords with SPARK_Mode is
 
    --  Whether Password matches Stored, compared in constant time. False for a malformed hash or one whose
    --  parameters exceed Max_Memory. Raises Crypto_Error for an Argon2id hash where Argon2id is missing.
-   function Verify (Password : String; Stored : String) return Boolean;
+   function Verify (Password : String; Stored : String) return Boolean
+     with Post => (if Verify'Result then Password'Length <= Max_Password_Length
+                                     and then Stored'Length <= Max_Stored_Length);
 
    --  Whether Stored was made with another algorithm than Preferred, or another cost than Using (Argon2id)
    --  or Fallback (scrypt), or is malformed: rehash at the next login.
    function Needs_Rehash
      (Stored   : String;
       Using    : Cost          := Default_Cost;
-      Fallback : Fallback_Cost := Default_Fallback) return Boolean;
+      Fallback : Fallback_Cost := Default_Fallback) return Boolean
+     with Post => (if not Needs_Rehash'Result then Stored'Length <= Max_Stored_Length);
+
+private
+
+   --  A stored hash taken apart. The parser is proved in SPARK: no stored byte makes it raise or read outside
+   --  the string, and an unreadable hash gives Valid = False.
+   type Parsed (Valid : Boolean := False) is record
+      case Valid is
+         when True =>
+            Kind       : Algorithm;
+            Using      : Cost;            --  for Argon2id
+            Fallback   : Fallback_Cost;   --  for scrypt
+            Salt_First : Positive;        --  of the Base64 salt in the stored text
+            Salt_Last  : Natural;
+            Hash_First : Positive;
+         when False =>
+            null;
+      end case;
+   end record;
+
+   function Parse (Stored : String) return Parsed
+     with Post => (if Parse'Result.Valid then Stored'Length <= Max_Stored_Length);
 
 end Sparrow.Crypto.Passwords;

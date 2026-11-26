@@ -146,6 +146,9 @@ package body Sparrow.Postgres.Queries is
 
    function Column_Count (From : Result_Reader) return Natural is (From.Result.Column_Count);
 
+   function On_Row (From : Result_Reader) return Boolean is
+     (From.Position in 1 .. From.Result.Row_Count);
+
    function Column_Name (From : Result_Reader; Column : Positive) return String is
      (Column_Name (From.Db.all, From.Result, Column));
 
